@@ -230,7 +230,7 @@ with st.sidebar:
 
     # 新規トーク入力欄
     if st.session_state.show_new_chat_input:
-        new_name = st.text_input("", placeholder="顧客名を入力...", label_visibility="collapsed", key="new_name_input")
+        new_name = st.text_input("", placeholder="タイトルを入力...", label_visibility="collapsed", key="new_name_input")
         if new_name.strip() and st.button("作成", use_container_width=True):
             cid = add_customer(new_name.strip())
             st.session_state.selected_customer_id = cid
@@ -269,7 +269,7 @@ selected_id = st.session_state.selected_customer_id
 if selected_id is None:
     st.markdown("""
     <div class="empty-state">
-        サイドバーの「＋ 新規トーク」から<br>会話を始めてください
+        サイドバーの「＋ 新規トーク」から<br>タイトルをつけて会話を始めてください
     </div>
     """, unsafe_allow_html=True)
     st.stop()
@@ -279,7 +279,7 @@ customers = get_customers()
 customer_map = {cid: name for cid, name, _ in customers}
 selected_name = customer_map.get(selected_id, "")
 
-st.markdown(f'<div class="customer-heading">{selected_name}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="customer-heading" style="font-size:1rem;font-weight:600;color:rgba(255,255,255,0.75);letter-spacing:0;text-transform:none;">{selected_name}</div>', unsafe_allow_html=True)
 
 if st.session_state.get("current_customer_id") != selected_id:
     st.session_state.current_customer_id = selected_id
