@@ -1,7 +1,6 @@
 import streamlit as st
 import sqlite3
 import os
-import json
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -76,61 +75,151 @@ def delete_customer(customer_id):
     conn.commit()
     conn.close()
 
-# 初期化
 init_db()
 
-st.set_page_config(page_title="Sales Labo AI", page_icon="💼", layout="centered")
-st.title("💼 Sales Labo AI コーチ")
-st.caption("Sales Laboの動画をもとに、営業の悩みに答えます")
+st.set_page_config(page_title="Sales Labo AI", page_icon="S", layout="centered")
+
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* ヘッダー */
+    .app-header {
+        padding: 2.5rem 0 1.5rem 0;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        margin-bottom: 2rem;
+    }
+    .app-title {
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #ffffff;
+        margin: 0;
+    }
+    .app-subtitle {
+        font-size: 0.875rem;
+        color: rgba(255,255,255,0.45);
+        margin-top: 0.35rem;
+        font-weight: 400;
+    }
+
+    /* 顧客名見出し */
+    .customer-header {
+        font-size: 0.8rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.35);
+        margin-bottom: 1.25rem;
+    }
+
+    /* 空状態 */
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: rgba(255,255,255,0.3);
+        font-size: 0.9rem;
+        line-height: 1.7;
+    }
+
+    /* サイドバー調整 */
+    [data-testid="stSidebar"] {
+        border-right: 1px solid rgba(255,255,255,0.06);
+    }
+    [data-testid="stSidebar"] .block-container {
+        padding-top: 2rem;
+    }
+
+    /* ラジオボタンを顧客リストらしく */
+    [data-testid="stSidebar"] [data-testid="stRadio"] label {
+        font-size: 0.9rem;
+        font-weight: 400;
+        padding: 0.3rem 0;
+    }
+
+    /* チャット入力 */
+    [data-testid="stChatInput"] textarea {
+        font-family: 'Inter', sans-serif;
+        font-size: 0.9rem;
+    }
+
+    /* ボタン */
+    [data-testid="stSidebar"] .stButton button {
+        font-size: 0.8rem;
+        font-weight: 500;
+        border-radius: 8px;
+    }
+
+    /* divider */
+    hr {
+        border-color: rgba(255,255,255,0.07) !important;
+    }
+
+    /* メッセージ */
+    [data-testid="stChatMessage"] {
+        border-radius: 12px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ヘッダー
+st.markdown("""
+<div class="app-header">
+    <div class="app-title">Sales Labo AI</div>
+    <div class="app-subtitle">193本の動画をもとに、営業の悩みに答えます</div>
+</div>
+""", unsafe_allow_html=True)
 
 # サイドバー
 with st.sidebar:
-    st.header("顧客を選択")
+    st.markdown('<div class="customer-header">Clients</div>', unsafe_allow_html=True)
 
     customers = get_customers()
     customer_names = [name for _, name in customers]
     customer_map = {name: cid for cid, name in customers}
 
-    # 新規顧客追加
-    new_name = st.text_input("新規顧客名を入力", placeholder="例: 山田商事")
-    if st.button("追加") and new_name.strip():
+    new_name = st.text_input("", placeholder="顧客名を入力して追加", label_visibility="collapsed")
+    if st.button("+ 追加", use_container_width=True) and new_name.strip():
         add_customer(new_name.strip())
         st.rerun()
 
-    st.divider()
-
-    # 顧客選択
     if customer_names:
-        selected_name = st.radio("顧客一覧", customer_names)
+        st.divider()
+        selected_name = st.radio("", customer_names, label_visibility="collapsed")
         selected_id = customer_map[selected_name]
 
-        if st.button("この顧客の履歴を削除", type="secondary"):
+        st.divider()
+        if st.button("履歴を削除", use_container_width=True, type="secondary"):
             delete_customer(selected_id)
             st.rerun()
     else:
         selected_name = None
         selected_id = None
-        st.info("顧客を追加してください")
 
 # メインエリア
 if selected_id is None:
-    st.info("サイドバーから顧客を選択または追加してください")
+    st.markdown("""
+    <div class="empty-state">
+        サイドバーから顧客を追加して<br>会話を始めてください
+    </div>
+    """, unsafe_allow_html=True)
     st.stop()
 
-st.subheader(f"{selected_name} との会話")
+st.markdown(f'<div class="customer-header">{selected_name}</div>', unsafe_allow_html=True)
 
-# セッション切り替え時に履歴を再読み込み
 if st.session_state.get("current_customer_id") != selected_id:
     st.session_state.current_customer_id = selected_id
     st.session_state.messages = get_messages(selected_id)
 
-# 会話表示
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 入力
-if prompt := st.chat_input("営業の悩みを入力してください..."):
+if prompt := st.chat_input("営業の悩みを入力してください"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     save_message(selected_id, "user", prompt)
     with st.chat_message("user"):
@@ -138,7 +227,7 @@ if prompt := st.chat_input("営業の悩みを入力してください..."):
 
     history = [m for m in st.session_state.messages[:-1]]
     with st.chat_message("assistant"):
-        with st.spinner("考え中..."):
+        with st.spinner(""):
             answer = ask(prompt, history)
         st.markdown(answer)
 
