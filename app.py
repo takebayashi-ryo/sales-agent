@@ -34,7 +34,7 @@ def init_db():
 def get_customers():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute('SELECT id, name FROM customers ORDER BY created_at DESC')
+    c.execute('SELECT id, name, created_at FROM customers ORDER BY created_at DESC')
     rows = c.fetchall()
     conn.close()
     return rows
@@ -87,7 +87,6 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
 
-    /* ヘッダー */
     .app-header {
         padding: 2.5rem 0 1.5rem 0;
         border-bottom: 1px solid rgba(255,255,255,0.08);
@@ -102,71 +101,162 @@ st.markdown("""
     }
     .app-subtitle {
         font-size: 0.875rem;
-        color: rgba(255,255,255,0.45);
+        color: rgba(255,255,255,0.4);
         margin-top: 0.35rem;
         font-weight: 400;
     }
 
-    /* 顧客名見出し */
-    .customer-header {
-        font-size: 0.8rem;
+    .section-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.3);
+        margin: 1.2rem 0 0.6rem 0;
+    }
+
+    /* 新規トークボタン */
+    .new-chat-btn {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 0.55rem 0.9rem;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        color: rgba(255,255,255,0.85);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s;
+        font-family: 'Inter', sans-serif;
+        text-align: left;
+    }
+    .new-chat-btn:hover {
+        background: rgba(255,255,255,0.1);
+    }
+
+    /* 会話リストアイテム */
+    .chat-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border-radius: 7px;
+        cursor: pointer;
+        transition: background 0.12s;
+        margin-bottom: 2px;
+    }
+    .chat-item:hover {
+        background: rgba(255,255,255,0.06);
+    }
+    .chat-item.active {
+        background: rgba(255,255,255,0.1);
+    }
+    .chat-item-name {
+        font-size: 0.875rem;
+        color: rgba(255,255,255,0.8);
+        font-weight: 400;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 150px;
+    }
+    .chat-item.active .chat-item-name {
+        color: #ffffff;
+        font-weight: 500;
+    }
+
+    /* 顧客ヘッダー */
+    .customer-heading {
+        font-size: 0.75rem;
         font-weight: 600;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: rgba(255,255,255,0.35);
-        margin-bottom: 1.25rem;
+        color: rgba(255,255,255,0.3);
+        margin-bottom: 1.5rem;
     }
 
-    /* 空状態 */
     .empty-state {
         text-align: center;
-        padding: 4rem 2rem;
-        color: rgba(255,255,255,0.3);
+        padding: 5rem 2rem;
+        color: rgba(255,255,255,0.25);
         font-size: 0.9rem;
-        line-height: 1.7;
+        line-height: 1.8;
     }
 
-    /* サイドバー調整 */
     [data-testid="stSidebar"] {
         border-right: 1px solid rgba(255,255,255,0.06);
     }
-    [data-testid="stSidebar"] .block-container {
-        padding-top: 2rem;
-    }
 
-    /* ラジオボタンを顧客リストらしく */
-    [data-testid="stSidebar"] [data-testid="stRadio"] label {
-        font-size: 0.9rem;
-        font-weight: 400;
-        padding: 0.3rem 0;
-    }
-
-    /* チャット入力 */
     [data-testid="stChatInput"] textarea {
         font-family: 'Inter', sans-serif;
         font-size: 0.9rem;
     }
 
-    /* ボタン */
     [data-testid="stSidebar"] .stButton button {
         font-size: 0.8rem;
         font-weight: 500;
         border-radius: 8px;
     }
 
-    /* divider */
     hr {
         border-color: rgba(255,255,255,0.07) !important;
+        margin: 0.75rem 0 !important;
     }
 
-    /* メッセージ */
-    [data-testid="stChatMessage"] {
-        border-radius: 12px;
+    /* 新規トーク入力欄 */
+    .new-chat-input {
+        margin-top: 0.5rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ヘッダー
+# セッション初期化
+if "selected_customer_id" not in st.session_state:
+    st.session_state.selected_customer_id = None
+if "show_new_chat_input" not in st.session_state:
+    st.session_state.show_new_chat_input = False
+
+# サイドバー
+with st.sidebar:
+    st.markdown('<div style="font-size:1rem;font-weight:700;color:rgba(255,255,255,0.9);padding:0.5rem 0 1.5rem 0;">Sales Labo AI</div>', unsafe_allow_html=True)
+
+    # 新規トークボタン
+    if st.button("＋  新規トーク", use_container_width=True):
+        st.session_state.show_new_chat_input = not st.session_state.show_new_chat_input
+
+    # 新規トーク入力欄
+    if st.session_state.show_new_chat_input:
+        new_name = st.text_input("", placeholder="顧客名を入力...", label_visibility="collapsed", key="new_name_input")
+        if new_name.strip() and st.button("作成", use_container_width=True):
+            cid = add_customer(new_name.strip())
+            st.session_state.selected_customer_id = cid
+            st.session_state.show_new_chat_input = False
+            st.rerun()
+
+    # 会話リスト
+    customers = get_customers()
+    if customers:
+        st.markdown('<div class="section-label">会話履歴</div>', unsafe_allow_html=True)
+        for cid, name, created_at in customers:
+            is_active = st.session_state.selected_customer_id == cid
+            active_class = "active" if is_active else ""
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                if st.button(name, key=f"customer_{cid}", use_container_width=True):
+                    st.session_state.selected_customer_id = cid
+                    st.rerun()
+            with col2:
+                if st.button("×", key=f"delete_{cid}"):
+                    delete_customer(cid)
+                    if st.session_state.selected_customer_id == cid:
+                        st.session_state.selected_customer_id = None
+                    st.rerun()
+
+# メインエリア
 st.markdown("""
 <div class="app-header">
     <div class="app-title">Sales Labo AI</div>
@@ -174,42 +264,22 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# サイドバー
-with st.sidebar:
-    st.markdown('<div class="customer-header">Clients</div>', unsafe_allow_html=True)
+selected_id = st.session_state.selected_customer_id
 
-    customers = get_customers()
-    customer_names = [name for _, name in customers]
-    customer_map = {name: cid for cid, name in customers}
-
-    new_name = st.text_input("", placeholder="顧客名を入力して追加", label_visibility="collapsed")
-    if st.button("+ 追加", use_container_width=True) and new_name.strip():
-        add_customer(new_name.strip())
-        st.rerun()
-
-    if customer_names:
-        st.divider()
-        selected_name = st.radio("", customer_names, label_visibility="collapsed")
-        selected_id = customer_map[selected_name]
-
-        st.divider()
-        if st.button("履歴を削除", use_container_width=True, type="secondary"):
-            delete_customer(selected_id)
-            st.rerun()
-    else:
-        selected_name = None
-        selected_id = None
-
-# メインエリア
 if selected_id is None:
     st.markdown("""
     <div class="empty-state">
-        サイドバーから顧客を追加して<br>会話を始めてください
+        サイドバーの「＋ 新規トーク」から<br>会話を始めてください
     </div>
     """, unsafe_allow_html=True)
     st.stop()
 
-st.markdown(f'<div class="customer-header">{selected_name}</div>', unsafe_allow_html=True)
+# 顧客名取得
+customers = get_customers()
+customer_map = {cid: name for cid, name, _ in customers}
+selected_name = customer_map.get(selected_id, "")
+
+st.markdown(f'<div class="customer-heading">{selected_name}</div>', unsafe_allow_html=True)
 
 if st.session_state.get("current_customer_id") != selected_id:
     st.session_state.current_customer_id = selected_id
