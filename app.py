@@ -79,6 +79,28 @@ init_db()
 
 st.set_page_config(page_title="Sales Labo AI", page_icon="S", layout="centered")
 
+# スワイプでサイドバーを開く（スマホ対応）
+st.markdown("""
+<script>
+(function() {
+    let startX = 0;
+    let startY = 0;
+    document.addEventListener('touchstart', function(e) {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+    }, { passive: true });
+    document.addEventListener('touchend', function(e) {
+        const dx = e.changedTouches[0].clientX - startX;
+        const dy = e.changedTouches[0].clientY - startY;
+        if (startX < 30 && dx > 70 && Math.abs(dy) < 100) {
+            const btn = document.querySelector('[data-testid="stSidebarCollapsedControl"] button');
+            if (btn) btn.click();
+        }
+    }, { passive: true });
+})();
+</script>
+""", unsafe_allow_html=True)
+
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
