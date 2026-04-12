@@ -233,6 +233,31 @@ st.markdown("""
     .new-chat-input {
         margin-top: 0.5rem;
     }
+
+    /* コピーボタン */
+    .copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 6px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 6px;
+        color: rgba(255,255,255,0.45);
+        font-size: 0.75rem;
+        font-family: 'Inter', sans-serif;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .copy-btn:hover {
+        background: rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.75);
+    }
+    .copy-btn.copied {
+        color: #4ade80;
+        border-color: rgba(74,222,128,0.3);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -307,9 +332,27 @@ if st.session_state.get("current_customer_id") != selected_id:
     st.session_state.current_customer_id = selected_id
     st.session_state.messages = get_messages(selected_id)
 
-for msg in st.session_state.messages:
+def render_assistant_message(content, msg_id):
+    escaped = content.replace('`', '\\`').replace('$', '\\$')
+    st.markdown(content)
+    st.markdown(f"""
+<button class="copy-btn" id="copy-btn-{msg_id}"
+    onclick="(function(){{
+        navigator.clipboard.writeText(`{escaped}`).then(function(){{
+            var btn = document.getElementById('copy-btn-{msg_id}');
+            btn.innerText = 'コピーしました';
+            btn.classList.add('copied');
+            setTimeout(function(){{ btn.innerText = 'コピー'; btn.classList.remove('copied'); }}, 2000);
+        }});
+    }})()">コピー</button>
+""", unsafe_allow_html=True)
+
+for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        if msg["role"] == "assistant":
+            render_assistant_message(msg["content"], f"hist-{i}")
+        else:
+            st.markdown(msg["content"])
 
 if prompt := st.chat_input("営業の悩みを入力してください"):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -321,7 +364,7 @@ if prompt := st.chat_input("営業の悩みを入力してください"):
     with st.chat_message("assistant"):
         with st.spinner(""):
             answer = ask(prompt, history)
-        st.markdown(answer)
+        render_assistant_message(answer, f"new-{len(st.session_state.messages)}")
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
     save_message(selected_id, "assistant", answer)
