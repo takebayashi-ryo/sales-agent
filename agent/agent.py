@@ -57,7 +57,7 @@ def ask(question, history=None):
 
     response = _client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1024,
+        max_tokens=4096,
         system=system_prompt,
         messages=messages
     )
