@@ -2,6 +2,8 @@ import streamlit as st
 import sqlite3
 import os
 import sys
+import csv
+import io
 sys.path.insert(0, os.path.dirname(__file__))
 
 from agent.agent import ask
@@ -111,6 +113,35 @@ def delete_transcript(customer_id):
     c.execute('DELETE FROM transcripts WHERE customer_id = ?', (customer_id,))
     conn.commit()
     conn.close()
+
+def extract_text_from_file(uploaded_file):
+    """ファイル種別に応じてテキストを抽出する"""
+    name = uploaded_file.name.lower()
+    content_bytes = uploaded_file.read()
+
+    if name.endswith(".pdf"):
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(content_bytes)) as pdf:
+            return "\n".join(page.extract_text() or "" for page in pdf.pages)
+
+    elif name.endswith(".docx"):
+        from docx import Document
+        doc = Document(io.BytesIO(content_bytes))
+        return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+
+    elif name.endswith(".csv"):
+        try:
+            text = content_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            text = content_bytes.decode("shift_jis", errors="replace")
+        reader = csv.reader(io.StringIO(text))
+        return "\n".join(",".join(row) for row in reader)
+
+    else:  # .txt / .md
+        try:
+            return content_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return content_bytes.decode("shift_jis", errors="replace")
 
 init_db()
 
@@ -414,18 +445,18 @@ for i, msg in enumerate(st.session_state.messages):
         else:
             st.markdown(msg["content"])
 
-msg = st.chat_input("営業の悩みを入力してください", accept_file=True, file_type=["txt", "md"])
+msg = st.chat_input("営業の悩みを入力してください", accept_file=True, file_type=["txt", "md", "pdf", "docx", "csv"])
 if msg:
     prompt = msg.text if msg.text else ""
 
     # ファイルが添付されていたら文字起こしとして保存
     if msg.files:
         uploaded_file = msg.files[0]
-        content_bytes = uploaded_file.read()
         try:
-            transcript_text = content_bytes.decode("utf-8")
-        except UnicodeDecodeError:
-            transcript_text = content_bytes.decode("shift_jis", errors="replace")
+            transcript_text = extract_text_from_file(uploaded_file)
+        except Exception as e:
+            transcript_text = ""
+            st.error(f"ファイルの読み込みに失敗しました: {e}")
         save_transcript(selected_id, uploaded_file.name, transcript_text)
         st.session_state.transcript_filename = uploaded_file.name
         st.session_state.transcript_content = transcript_text
