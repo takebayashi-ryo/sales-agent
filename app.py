@@ -446,7 +446,10 @@ if prompt := st.chat_input("営業の悩みを入力してください"):
     history = [m for m in st.session_state.messages[:-1]]
     with st.chat_message("assistant"):
         with st.spinner(""):
-            answer = ask(prompt, history, transcript=st.session_state.transcript_content)
+            try:
+                answer = ask(prompt, history, transcript=st.session_state.transcript_content)
+            except Exception as e:
+                answer = f"エラーが発生しました: {type(e).__name__}: {e}"
         render_assistant_message(answer, f"new-{len(st.session_state.messages)}")
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
