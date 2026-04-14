@@ -380,40 +380,17 @@ if st.session_state.get("current_customer_id") != selected_id:
         st.session_state.transcript_filename = None
         st.session_state.transcript_content = None
 
-# 文字起こし添付エリア
-with st.expander("📎 商談文字起こしを添付" + (f"  ✅ {st.session_state.transcript_filename}" if st.session_state.transcript_content else ""), expanded=not st.session_state.transcript_content):
-    uploaded_file = st.file_uploader(
-        "テキストファイルをアップロード（.txt / .md）",
-        type=["txt", "md"],
-        key=f"uploader_{selected_id}",
-        label_visibility="collapsed"
-    )
-    if uploaded_file is not None:
-        content_bytes = uploaded_file.read()
-        try:
-            transcript_text = content_bytes.decode("utf-8")
-        except UnicodeDecodeError:
-            transcript_text = content_bytes.decode("shift_jis", errors="replace")
-        save_transcript(selected_id, uploaded_file.name, transcript_text)
-        st.session_state.transcript_filename = uploaded_file.name
-        st.session_state.transcript_content = transcript_text
-        st.success(f"「{uploaded_file.name}」を添付しました")
-        st.rerun()
-
-    if st.session_state.transcript_content:
-        st.markdown(f"**添付中:** {st.session_state.transcript_filename}")
-        with st.container():
-            preview = st.session_state.transcript_content[:500]
-            if len(st.session_state.transcript_content) > 500:
-                preview += "…"
-            st.code(preview, language=None)
-        if st.button("添付を解除", key="remove_transcript"):
+# 添付中の文字起こしバッジ表示
+if st.session_state.transcript_content:
+    col1, col2 = st.columns([8, 1])
+    with col1:
+        st.markdown(f'<div style="font-size:0.8rem;color:rgba(255,255,255,0.5);padding:0.3rem 0;">📎 <span style="color:rgba(255,255,255,0.75);">{st.session_state.transcript_filename}</span> を添付中</div>', unsafe_allow_html=True)
+    with col2:
+        if st.button("×", key="remove_transcript", help="添付を解除"):
             delete_transcript(selected_id)
             st.session_state.transcript_content = None
             st.session_state.transcript_filename = None
             st.rerun()
-    else:
-        st.markdown('<div style="color:rgba(255,255,255,0.4);font-size:0.85rem;">商談の文字起こしを添付すると、AIがフィードバックを行います</div>', unsafe_allow_html=True)
 
 def render_assistant_message(content, msg_id):
     escaped = content.replace('`', '\\`').replace('$', '\\$')
@@ -437,20 +414,40 @@ for i, msg in enumerate(st.session_state.messages):
         else:
             st.markdown(msg["content"])
 
-if prompt := st.chat_input("営業の悩みを入力してください"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    save_message(selected_id, "user", prompt)
-    with st.chat_message("user"):
-        st.markdown(prompt)
+msg = st.chat_input("営業の悩みを入力してください", accept_file=True, file_type=["txt", "md"])
+if msg:
+    prompt = msg.text if msg.text else ""
 
-    history = [m for m in st.session_state.messages[:-1]]
-    with st.chat_message("assistant"):
-        with st.spinner(""):
-            try:
-                answer = ask(prompt, history, transcript=st.session_state.transcript_content)
-            except Exception as e:
-                answer = f"エラーが発生しました: {type(e).__name__}: {e}"
-        render_assistant_message(answer, f"new-{len(st.session_state.messages)}")
+    # ファイルが添付されていたら文字起こしとして保存
+    if msg.files:
+        uploaded_file = msg.files[0]
+        content_bytes = uploaded_file.read()
+        try:
+            transcript_text = content_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            transcript_text = content_bytes.decode("shift_jis", errors="replace")
+        save_transcript(selected_id, uploaded_file.name, transcript_text)
+        st.session_state.transcript_filename = uploaded_file.name
+        st.session_state.transcript_content = transcript_text
+        if not prompt:
+            prompt = f"「{uploaded_file.name}」を添付しました。この商談のフィードバックをお願いします。"
 
-    st.session_state.messages.append({"role": "assistant", "content": answer})
-    save_message(selected_id, "assistant", answer)
+    if prompt:
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        save_message(selected_id, "user", prompt)
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        history = [m for m in st.session_state.messages[:-1]]
+        with st.chat_message("assistant"):
+            with st.spinner(""):
+                try:
+                    answer = ask(prompt, history, transcript=st.session_state.transcript_content)
+                except Exception as e:
+                    answer = f"エラーが発生しました: {type(e).__name__}: {e}"
+            render_assistant_message(answer, f"new-{len(st.session_state.messages)}")
+
+        st.session_state.messages.append({"role": "assistant", "content": answer})
+        save_message(selected_id, "assistant", answer)
+    else:
+        st.rerun()
