@@ -1,5 +1,7 @@
 .env
 data/subtitles/
+data/persona_insights_cache.json
+data/transcripts_export.csv
 __pycache__/
 *.pyc
 .venv/

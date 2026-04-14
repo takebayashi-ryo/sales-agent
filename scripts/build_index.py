@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import chromadb
 from sentence_transformers import SentenceTransformer
@@ -8,14 +9,29 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 TRANSCRIPTS_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'transcripts.json')
 CHROMA_DIR = os.path.join(os.path.dirname(__file__), '..', 'chroma_db')
-CHUNK_SIZE = 500  # 文字数
+CHUNK_SIZE = 600   # 文字数
+OVERLAP = 120      # オーバーラップ文字数
 
-def chunk_text(text, chunk_size=CHUNK_SIZE):
+def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=OVERLAP):
+    """文境界を考慮しオーバーラップありでテキストをチャンク分割する"""
+    sentences = re.split(r'(?<=[。！？\n])', text)
+    sentences = [s for s in sentences if s.strip()]
+
     chunks = []
-    for i in range(0, len(text), chunk_size):
-        chunk = text[i:i+chunk_size]
-        if chunk.strip():
-            chunks.append(chunk)
+    current = ""
+    for sentence in sentences:
+        if len(current) + len(sentence) <= chunk_size:
+            current += sentence
+        else:
+            if current.strip():
+                chunks.append(current.strip())
+            # オーバーラップ: 前のチャンクの末尾を引き継ぐ
+            overlap_text = current[-overlap:] if len(current) > overlap else current
+            current = overlap_text + sentence
+
+    if current.strip():
+        chunks.append(current.strip())
+
     return chunks
 
 def main():
@@ -44,7 +60,7 @@ def main():
             all_ids.append(f"{video['video_id']}_{j}")
             all_metadatas.append({'video_id': video['video_id'], 'url': video['url']})
 
-    print(f'合計 {len(all_chunks)} チャンクをベクトル化中...')
+    print(f'合計 {len(all_chunks)} チャンクをベクトル化中（旧: 2226 → 改善後）...')
 
     batch_size = 100
     for i in range(0, len(all_chunks), batch_size):
@@ -57,6 +73,7 @@ def main():
         print(f'  {min(i+batch_size, len(all_chunks))}/{len(all_chunks)} 完了')
 
     print(f'\nインデックス構築完了！→ {CHROMA_DIR}')
+    print(f'チャンク数: {len(all_chunks)}（オーバーラップ{OVERLAP}文字付き、文境界分割）')
 
 if __name__ == '__main__':
     main()

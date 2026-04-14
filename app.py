@@ -28,6 +28,16 @@ def init_db():
             FOREIGN KEY (customer_id) REFERENCES customers(id)
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS transcripts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER UNIQUE NOT NULL,
+            filename TEXT,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id)
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -71,7 +81,34 @@ def delete_customer(customer_id):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('DELETE FROM messages WHERE customer_id = ?', (customer_id,))
+    c.execute('DELETE FROM transcripts WHERE customer_id = ?', (customer_id,))
     c.execute('DELETE FROM customers WHERE id = ?', (customer_id,))
+    conn.commit()
+    conn.close()
+
+def save_transcript(customer_id, filename, content):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO transcripts (customer_id, filename, content)
+        VALUES (?, ?, ?)
+        ON CONFLICT(customer_id) DO UPDATE SET filename=excluded.filename, content=excluded.content, created_at=CURRENT_TIMESTAMP
+    ''', (customer_id, filename, content))
+    conn.commit()
+    conn.close()
+
+def get_transcript(customer_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('SELECT filename, content FROM transcripts WHERE customer_id = ?', (customer_id,))
+    row = c.fetchone()
+    conn.close()
+    return row  # (filename, content) or None
+
+def delete_transcript(customer_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('DELETE FROM transcripts WHERE customer_id = ?', (customer_id,))
     conn.commit()
     conn.close()
 
@@ -266,6 +303,10 @@ if "selected_customer_id" not in st.session_state:
     st.session_state.selected_customer_id = None
 if "show_new_chat_input" not in st.session_state:
     st.session_state.show_new_chat_input = False
+if "transcript_content" not in st.session_state:
+    st.session_state.transcript_content = None
+if "transcript_filename" not in st.session_state:
+    st.session_state.transcript_filename = None
 
 # サイドバー
 with st.sidebar:
@@ -331,6 +372,48 @@ st.markdown(f'<div class="customer-heading" style="font-size:1rem;font-weight:60
 if st.session_state.get("current_customer_id") != selected_id:
     st.session_state.current_customer_id = selected_id
     st.session_state.messages = get_messages(selected_id)
+    transcript_row = get_transcript(selected_id)
+    if transcript_row:
+        st.session_state.transcript_filename = transcript_row[0]
+        st.session_state.transcript_content = transcript_row[1]
+    else:
+        st.session_state.transcript_filename = None
+        st.session_state.transcript_content = None
+
+# 文字起こし添付エリア
+with st.expander("📎 商談文字起こしを添付" + (f"  ✅ {st.session_state.transcript_filename}" if st.session_state.transcript_content else ""), expanded=not st.session_state.transcript_content):
+    uploaded_file = st.file_uploader(
+        "テキストファイルをアップロード（.txt / .md）",
+        type=["txt", "md"],
+        key=f"uploader_{selected_id}",
+        label_visibility="collapsed"
+    )
+    if uploaded_file is not None:
+        content_bytes = uploaded_file.read()
+        try:
+            transcript_text = content_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            transcript_text = content_bytes.decode("shift_jis", errors="replace")
+        save_transcript(selected_id, uploaded_file.name, transcript_text)
+        st.session_state.transcript_filename = uploaded_file.name
+        st.session_state.transcript_content = transcript_text
+        st.success(f"「{uploaded_file.name}」を添付しました")
+        st.rerun()
+
+    if st.session_state.transcript_content:
+        st.markdown(f"**添付中:** {st.session_state.transcript_filename}")
+        with st.container():
+            preview = st.session_state.transcript_content[:500]
+            if len(st.session_state.transcript_content) > 500:
+                preview += "…"
+            st.code(preview, language=None)
+        if st.button("添付を解除", key="remove_transcript"):
+            delete_transcript(selected_id)
+            st.session_state.transcript_content = None
+            st.session_state.transcript_filename = None
+            st.rerun()
+    else:
+        st.markdown('<div style="color:rgba(255,255,255,0.4);font-size:0.85rem;">商談の文字起こしを添付すると、AIがフィードバックを行います</div>', unsafe_allow_html=True)
 
 def render_assistant_message(content, msg_id):
     escaped = content.replace('`', '\\`').replace('$', '\\$')
@@ -363,7 +446,7 @@ if prompt := st.chat_input("営業の悩みを入力してください"):
     history = [m for m in st.session_state.messages[:-1]]
     with st.chat_message("assistant"):
         with st.spinner(""):
-            answer = ask(prompt, history)
+            answer = ask(prompt, history, transcript=st.session_state.transcript_content)
         render_assistant_message(answer, f"new-{len(st.session_state.messages)}")
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
