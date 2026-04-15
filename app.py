@@ -423,42 +423,10 @@ if st.session_state.transcript_content:
             st.session_state.transcript_filename = None
             st.rerun()
 
-def _b64(text):
-    import base64
-    return base64.b64encode(text.encode('utf-8')).decode('ascii')
-
-def _copy_button_html(b64_content, btn_id, label="コピー", done_label="コピーしました", extra_style=""):
-    return f"""
-<button class="copy-btn" id="{btn_id}" data-b64="{b64_content}" style="{extra_style}"
-    onclick="(function(btn){{
-        var bytes = Uint8Array.from(atob(btn.getAttribute('data-b64')), function(c){{ return c.charCodeAt(0); }});
-        var text = new TextDecoder().decode(bytes);
-        function onDone() {{
-            btn.innerText = '{done_label}';
-            btn.classList.add('copied');
-            setTimeout(function(){{ btn.innerText = '{label}'; btn.classList.remove('copied'); }}, 2000);
-        }}
-        function fallback() {{
-            var el = document.createElement('textarea');
-            el.value = text;
-            el.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
-            document.body.appendChild(el);
-            el.focus(); el.select();
-            document.execCommand('copy');
-            document.body.removeChild(el);
-            onDone();
-        }}
-        if (navigator.clipboard && navigator.clipboard.writeText) {{
-            navigator.clipboard.writeText(text).then(onDone).catch(fallback);
-        }} else {{
-            fallback();
-        }}
-    }})(this)">{label}</button>
-"""
-
 def render_assistant_message(content, msg_id):
     st.markdown(content)
-    st.markdown(_copy_button_html(_b64(content), f"copy-btn-{msg_id}"), unsafe_allow_html=True)
+    with st.expander("コピー"):
+        st.code(content, language=None)
 
 # 既存メッセージを描画（forループのみで行い、インライン描画はしない）
 for i, msg in enumerate(st.session_state.messages):
@@ -487,16 +455,12 @@ if st.session_state.get("_pending_prompt"):
     del st.session_state["_pending_prompt"]
     st.rerun()
 
-# 全てコピーボタン（アシスタントの返答が1件以上あるとき表示）
+# 全ての返答をまとめてコピー
 assistant_messages = [m for m in st.session_state.messages if m["role"] == "assistant"]
 if assistant_messages and not st.session_state.get("_pending_prompt"):
     all_text = "\n\n---\n\n".join(m["content"] for m in assistant_messages)
-    st.markdown(_copy_button_html(
-        _b64(all_text), "copy-all-btn",
-        label="全ての返答をコピー",
-        done_label="コピーしました",
-        extra_style="margin: 0.5rem 0 1rem 0; font-size:0.8rem;"
-    ), unsafe_allow_html=True)
+    with st.expander("全ての返答をコピー"):
+        st.code(all_text, language=None)
 
 # チャット入力
 msg = st.chat_input("営業の悩みを入力してください", accept_file=True, file_type=["txt", "md", "pdf", "docx", "csv"])
