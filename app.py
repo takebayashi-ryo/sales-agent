@@ -433,11 +433,26 @@ def _copy_button_html(b64_content, btn_id, label="コピー", done_label="コピ
     onclick="(function(btn){{
         var bytes = Uint8Array.from(atob(btn.getAttribute('data-b64')), function(c){{ return c.charCodeAt(0); }});
         var text = new TextDecoder().decode(bytes);
-        navigator.clipboard.writeText(text).then(function(){{
+        function onDone() {{
             btn.innerText = '{done_label}';
             btn.classList.add('copied');
             setTimeout(function(){{ btn.innerText = '{label}'; btn.classList.remove('copied'); }}, 2000);
-        }});
+        }}
+        function fallback() {{
+            var el = document.createElement('textarea');
+            el.value = text;
+            el.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+            document.body.appendChild(el);
+            el.focus(); el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            onDone();
+        }}
+        if (navigator.clipboard && navigator.clipboard.writeText) {{
+            navigator.clipboard.writeText(text).then(onDone).catch(fallback);
+        }} else {{
+            fallback();
+        }}
     }})(this)">{label}</button>
 """
 
