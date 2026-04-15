@@ -424,12 +424,14 @@ if st.session_state.transcript_content:
             st.rerun()
 
 def render_assistant_message(content, msg_id):
-    escaped = content.replace('`', '\\`').replace('$', '\\$')
+    import json
+    json_content = json.dumps(content)  # 特殊文字を安全にエンコード
     st.markdown(content)
     st.markdown(f"""
 <button class="copy-btn" id="copy-btn-{msg_id}"
     onclick="(function(){{
-        navigator.clipboard.writeText(`{escaped}`).then(function(){{
+        var text = {json_content};
+        navigator.clipboard.writeText(text).then(function(){{
             var btn = document.getElementById('copy-btn-{msg_id}');
             btn.innerText = 'コピーしました';
             btn.classList.add('copied');
@@ -464,6 +466,25 @@ if st.session_state.get("_pending_prompt"):
     save_message(selected_id, "assistant", answer)
     del st.session_state["_pending_prompt"]
     st.rerun()
+
+# 全てコピーボタン（アシスタントの返答が1件以上あるとき表示）
+assistant_messages = [m for m in st.session_state.messages if m["role"] == "assistant"]
+if assistant_messages and not st.session_state.get("_pending_prompt"):
+    import json
+    all_text = "\n\n---\n\n".join(m["content"] for m in assistant_messages)
+    json_all = json.dumps(all_text)
+    st.markdown(f"""
+<button class="copy-btn" id="copy-all-btn" style="margin: 0.5rem 0 1rem 0; font-size:0.8rem;"
+    onclick="(function(){{
+        var text = {json_all};
+        navigator.clipboard.writeText(text).then(function(){{
+            var btn = document.getElementById('copy-all-btn');
+            btn.innerText = '全てコピーしました';
+            btn.classList.add('copied');
+            setTimeout(function(){{ btn.innerText = '全ての返答をコピー'; btn.classList.remove('copied'); }}, 2000);
+        }});
+    }})()">全ての返答をコピー</button>
+""", unsafe_allow_html=True)
 
 # チャット入力
 msg = st.chat_input("営業の悩みを入力してください", accept_file=True, file_type=["txt", "md", "pdf", "docx", "csv"])
