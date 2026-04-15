@@ -438,6 +438,7 @@ def render_assistant_message(content, msg_id):
     }})()">コピー</button>
 """, unsafe_allow_html=True)
 
+# 既存メッセージを描画（forループのみで行い、インライン描画はしない）
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         if msg["role"] == "assistant":
@@ -445,6 +446,26 @@ for i, msg in enumerate(st.session_state.messages):
         else:
             st.markdown(msg["content"])
 
+# 返答待ち中ならスピナーを表示してAIを呼び出す
+if st.session_state.get("_pending_prompt"):
+    with st.chat_message("assistant"):
+        with st.spinner(""):
+            try:
+                history = [m for m in st.session_state.messages]
+                answer = ask(
+                    st.session_state._pending_prompt,
+                    history,
+                    transcript=st.session_state.transcript_content
+                )
+            except Exception as e:
+                answer = f"エラーが発生しました: {type(e).__name__}: {e}"
+        render_assistant_message(answer, f"new-{len(st.session_state.messages)}")
+    st.session_state.messages.append({"role": "assistant", "content": answer})
+    save_message(selected_id, "assistant", answer)
+    del st.session_state["_pending_prompt"]
+    st.rerun()
+
+# チャット入力
 msg = st.chat_input("営業の悩みを入力してください", accept_file=True, file_type=["txt", "md", "pdf", "docx", "csv"])
 if msg:
     prompt = msg.text if msg.text else ""
@@ -466,19 +487,5 @@ if msg:
     if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
         save_message(selected_id, "user", prompt)
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        history = [m for m in st.session_state.messages[:-1]]
-        with st.chat_message("assistant"):
-            with st.spinner(""):
-                try:
-                    answer = ask(prompt, history, transcript=st.session_state.transcript_content)
-                except Exception as e:
-                    answer = f"エラーが発生しました: {type(e).__name__}: {e}"
-            render_assistant_message(answer, f"new-{len(st.session_state.messages)}")
-
-        st.session_state.messages.append({"role": "assistant", "content": answer})
-        save_message(selected_id, "assistant", answer)
-    else:
-        st.rerun()
+        st.session_state["_pending_prompt"] = prompt
+    st.rerun()
