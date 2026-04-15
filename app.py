@@ -1,9 +1,11 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import sqlite3
 import os
 import sys
 import csv
 import io
+import base64
 sys.path.insert(0, os.path.dirname(__file__))
 
 from agent.agent import ask
@@ -423,10 +425,55 @@ if st.session_state.transcript_content:
             st.session_state.transcript_filename = None
             st.rerun()
 
+def render_copy_button(text, label="コピー"):
+    b64 = base64.b64encode(text.encode('utf-8')).decode('ascii')
+    components.html(f"""
+    <style>
+        * {{ margin:0; padding:0; box-sizing:border-box; }}
+        button {{
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px;
+            color: rgba(255,255,255,0.5);
+            font-size: 12px;
+            padding: 4px 12px;
+            cursor: pointer;
+            font-family: Inter, sans-serif;
+            transition: all 0.15s;
+        }}
+        button:hover {{ background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8); }}
+        button.done {{ color: #4ade80; border-color: rgba(74,222,128,0.4); }}
+    </style>
+    <button id="btn" onclick="(function(btn){{
+        var b = '{b64}';
+        var bytes = Uint8Array.from(atob(b), function(c){{ return c.charCodeAt(0); }});
+        var text = new TextDecoder().decode(bytes);
+        function done() {{
+            btn.textContent = 'コピーしました';
+            btn.classList.add('done');
+            setTimeout(function(){{ btn.textContent = '{label}'; btn.classList.remove('done'); }}, 2000);
+        }}
+        function fallback() {{
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            done();
+        }}
+        if (navigator.clipboard && navigator.clipboard.writeText) {{
+            navigator.clipboard.writeText(text).then(done).catch(fallback);
+        }} else {{
+            fallback();
+        }}
+    }})(this)">{label}</button>
+    """, height=32)
+
 def render_assistant_message(content, msg_id):
     st.markdown(content)
-    with st.expander("コピー"):
-        st.code(content, language=None)
+    render_copy_button(content)
 
 # 既存メッセージを描画（forループのみで行い、インライン描画はしない）
 for i, msg in enumerate(st.session_state.messages):
@@ -459,8 +506,7 @@ if st.session_state.get("_pending_prompt"):
 assistant_messages = [m for m in st.session_state.messages if m["role"] == "assistant"]
 if assistant_messages and not st.session_state.get("_pending_prompt"):
     all_text = "\n\n---\n\n".join(m["content"] for m in assistant_messages)
-    with st.expander("全ての返答をコピー"):
-        st.code(all_text, language=None)
+    render_copy_button(all_text, label="全ての返答をコピー")
 
 # チャット入力
 msg = st.chat_input("営業の悩みを入力してください", accept_file=True, file_type=["txt", "md", "pdf", "docx", "csv"])
