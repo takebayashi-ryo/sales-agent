@@ -42,16 +42,15 @@ def search_context(query, n_results=10):
     return docs, metas
 
 
-def _build_system_prompt(context, transcript=None):
-    # ペルソナ: 合成済みファイルがあればそれを使い、なければデフォルトのハードコード版にフォールバック
+def _build_system_blocks(context, transcript=None):
     if _persona:
-        persona_section = f"""あなたはYouTubeチャンネル「Sales Labo」の営業コンサルタント・ヒョンです。
+        persona_text = f"""あなたはYouTubeチャンネル「Sales Labo」の営業コンサルタント・ヒョンです。
 以下のペルソナドキュメントに従って完全にヒョンとして振る舞ってください。
 
 {_persona}
 """
     else:
-        persona_section = """あなたはYouTubeチャンネル「Sales Labo」の営業コンサルタント・ヒョンです。
+        persona_text = """あなたはYouTubeチャンネル「Sales Labo」の営業コンサルタント・ヒョンです。
 新規開拓営業を10年以上専門に行い、現在は営業代行・営業コンサル事業を経営しながら、今もなお毎日自ら現場でテレアポ・新規商談をガンガン行い、人並以上の成果を出し続けています。
 毎年100名以上の営業パーソンと個別コンサルをしており、売れる営業マンと売れない営業マンの違いを熟知しています。
 
@@ -73,11 +72,23 @@ def _build_system_prompt(context, transcript=None):
 - CIA、医者など例え話を多用
 """
 
-    transcript_section = ""
-    if transcript:
-        transcript_section = f"""
+    # ペルソナはキャッシュ対象（静的で大きいため）
+    blocks = [
+        {
+            "type": "text",
+            "text": persona_text,
+            "cache_control": {"type": "ephemeral"}
+        },
+        {
+            "type": "text",
+            "text": f"【参考動画コンテンツ】\n以下は関連する実際の動画から取得したコンテンツです。回答の根拠・具体例として活用してください：\n{context}"
+        }
+    ]
 
-【添付された商談文字起こし】
+    if transcript:
+        blocks.append({
+            "type": "text",
+            "text": f"""【添付された商談文字起こし】
 ユーザーが実際の商談・営業トークの文字起こしを添付しています。
 フィードバックや質問があった場合、この文字起こしをもとに以下の観点で具体的なアドバイスをしてください：
 - 良かった点（警戒心を下げる工夫、共感の取り方など）
@@ -87,15 +98,10 @@ def _build_system_prompt(context, transcript=None):
 
 --- 文字起こし開始 ---
 {transcript}
---- 文字起こし終了 ---
-"""
+--- 文字起こし終了 ---"""
+        })
 
-    return f"""{persona_section}
-
-【参考動画コンテンツ】
-以下は関連する実際の動画から取得したコンテンツです。回答の根拠・具体例として活用してください：
-{context}
-{transcript_section}"""
+    return blocks
 
 
 def ask(question, history=None, transcript=None):
@@ -103,7 +109,7 @@ def ask(question, history=None, transcript=None):
     docs, metas = search_context(question)
     context = '\n\n'.join([f"【参考】{d}" for d in docs])
 
-    system_prompt = _build_system_prompt(context, transcript)
+    system_blocks = _build_system_blocks(context, transcript)
 
     messages = []
     if history:
@@ -113,7 +119,7 @@ def ask(question, history=None, transcript=None):
     response = _client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,
-        system=system_prompt,
+        system=system_blocks,
         messages=messages
     )
     return response.content[0].text
