@@ -1,6 +1,5 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import sqlite3
 import os
 import sys
 import csv
@@ -9,112 +8,56 @@ import base64
 sys.path.insert(0, os.path.dirname(__file__))
 
 from agent.agent import ask
+from supabase import create_client
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'conversations.db')
+def get_db():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_SERVICE_KEY"]
+    return create_client(url, key)
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS customers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_id INTEGER NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (customer_id) REFERENCES customers(id)
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS transcripts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_id INTEGER UNIQUE NOT NULL,
-            filename TEXT,
-            content TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (customer_id) REFERENCES customers(id)
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    pass  # Supabaseではテーブルは作成済み
 
 def get_customers():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('SELECT id, name, created_at FROM customers ORDER BY created_at DESC')
-    rows = c.fetchall()
-    conn.close()
-    return rows
+    db = get_db()
+    res = db.table("customers").select("id, name, created_at").order("created_at", desc=True).execute()
+    return [(r["id"], r["name"], r["created_at"]) for r in res.data]
 
 def add_customer(name):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    try:
-        c.execute('INSERT INTO customers (name) VALUES (?)', (name,))
-        conn.commit()
-        customer_id = c.lastrowid
-    except sqlite3.IntegrityError:
-        c.execute('SELECT id FROM customers WHERE name = ?', (name,))
-        customer_id = c.fetchone()[0]
-    conn.close()
-    return customer_id
+    db = get_db()
+    res = db.table("customers").upsert({"name": name}, on_conflict="name").execute()
+    return res.data[0]["id"]
 
 def get_messages(customer_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('SELECT role, content FROM messages WHERE customer_id = ? ORDER BY created_at', (customer_id,))
-    rows = c.fetchall()
-    conn.close()
-    return [{"role": r, "content": content} for r, content in rows]
+    db = get_db()
+    res = db.table("app_messages").select("role, content").eq("customer_id", customer_id).order("created_at").execute()
+    return [{"role": r["role"], "content": r["content"]} for r in res.data]
 
 def save_message(customer_id, role, content):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('INSERT INTO messages (customer_id, role, content) VALUES (?, ?, ?)', (customer_id, role, content))
-    conn.commit()
-    conn.close()
+    db = get_db()
+    db.table("app_messages").insert({"customer_id": customer_id, "role": role, "content": content}).execute()
 
 def delete_customer(customer_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('DELETE FROM messages WHERE customer_id = ?', (customer_id,))
-    c.execute('DELETE FROM transcripts WHERE customer_id = ?', (customer_id,))
-    c.execute('DELETE FROM customers WHERE id = ?', (customer_id,))
-    conn.commit()
-    conn.close()
+    db = get_db()
+    db.table("app_messages").delete().eq("customer_id", customer_id).execute()
+    db.table("transcripts").delete().eq("customer_id", customer_id).execute()
+    db.table("customers").delete().eq("id", customer_id).execute()
 
 def save_transcript(customer_id, filename, content):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO transcripts (customer_id, filename, content)
-        VALUES (?, ?, ?)
-        ON CONFLICT(customer_id) DO UPDATE SET filename=excluded.filename, content=excluded.content, created_at=CURRENT_TIMESTAMP
-    ''', (customer_id, filename, content))
-    conn.commit()
-    conn.close()
+    db = get_db()
+    db.table("transcripts").upsert({"customer_id": customer_id, "filename": filename, "content": content}, on_conflict="customer_id").execute()
 
 def get_transcript(customer_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('SELECT filename, content FROM transcripts WHERE customer_id = ?', (customer_id,))
-    row = c.fetchone()
-    conn.close()
-    return row  # (filename, content) or None
+    db = get_db()
+    res = db.table("transcripts").select("filename, content").eq("customer_id", customer_id).execute()
+    if res.data:
+        r = res.data[0]
+        return (r["filename"], r["content"])
+    return None
 
 def delete_transcript(customer_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('DELETE FROM transcripts WHERE customer_id = ?', (customer_id,))
-    conn.commit()
-    conn.close()
+    db = get_db()
+    db.table("transcripts").delete().eq("customer_id", customer_id).execute()
 
 def extract_text_from_file(uploaded_file):
     """ファイル種別に応じてテキストを抽出する"""
